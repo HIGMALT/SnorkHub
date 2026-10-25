@@ -8,6 +8,7 @@
       - Revelar Placas da Ponte de Vidro (Glass ESP)
       - Fullbright (Visão Noturna)
       - Anti-Fling (Proteção contra arremesso)
+      - FOV (Campo de Visão)
 
     Tecla para mostrar/esconder o menu: RightShift
 ]]
@@ -17,7 +18,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
-local ReplicatedStorage = game:GetService("ReplicatedStorage") -- Adicionado para o QTE
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 local mouse = player:GetMouse()
@@ -231,6 +232,10 @@ local originalAmbient, originalOutdoor, originalBrightness
 
 local antiFlingActive = false
 
+-- Variáveis do FOV
+local fovEnabled = false
+local fovValue = 70 -- FOV Padrão do Roblox
+
 local function getChar() return player.Character end
 local function getHRP() local c = getChar() return c and c:FindFirstChild("HumanoidRootPart") end
 local function getHum() local c = getChar() return c and c:FindFirstChildOfClass("Humanoid") end
@@ -335,7 +340,7 @@ task.spawn(function()
 end)
 
 ------------------------------------------------------------
--- AUTO QTE (HACK CIRÚRGICO VIA REMOTE EVENT)
+-- AUTO QTE
 ------------------------------------------------------------
 task.spawn(function()
 	while task.wait(qteDelay) do
@@ -350,42 +355,27 @@ task.spawn(function()
 		local qteMain = qteHolder:FindFirstChild("QTEMain")
 		if not qteMain then continue end
 		
-		-- 1. Tenta descobrir qual é a tecla que apareceu na tela
 		local foundKey = nil
 		for _, obj in pairs(qteMain:GetDescendants()) do
 			if obj:IsA("TextLabel") and obj.Text ~= "" then
 				local text = obj.Text:upper()
-				if validKeys[text] then 
-					foundKey = text 
-					break 
-				end
+				if validKeys[text] then foundKey = text break end
 			elseif obj:IsA("ImageLabel") and obj.Name ~= "" then
 				local name = obj.Name:upper()
-				if validKeys[name] then 
-					foundKey = name 
-					break 
-				end
+				if validKeys[name] then foundKey = name break end
 			elseif validKeys[obj.Name:upper()] then
 				foundKey = obj.Name:upper()
 				break
 			end
 		end
 		
-		-- 2. Se achou a tecla, age!
 		if foundKey then
 			pcall(function()
-				-- Tenta achar o RemoteEvent e mandar pro servidor
 				local qteEvents = ReplicatedStorage:FindFirstChild("QTEEvents")
-				
 				if qteEvents then
 					local qteHandler = qteEvents:FindFirstChild("QTEHandler")
-					if qteHandler then
-						-- Dispara o RemoteEvent (O servidor acha que você clicou)
-						qteHandler:FireServer(foundKey) 
-					end
+					if qteHandler then qteHandler:FireServer(foundKey) end
 				end
-				
-				-- E também tenta simular o teclado como backup
 				if type(keypress) == "function" then keypress(foundKey) end
 				if type(VirtualInputManager) ~= "nil" then
 					VirtualInputManager:SendKeyEvent(true, Enum.KeyCode[foundKey], false, game)
@@ -406,7 +396,6 @@ local function toggleFullbright(on)
 		originalAmbient = Lighting.Ambient
 		originalOutdoor = Lighting.OutdoorAmbient
 		originalBrightness = Lighting.Brightness
-		
 		Lighting.Ambient = Color3.fromRGB(255, 255, 255)
 		Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
 		Lighting.Brightness = 3
@@ -416,6 +405,24 @@ local function toggleFullbright(on)
 		if originalBrightness then Lighting.Brightness = originalBrightness end
 	end
 end
+
+------------------------------------------------------------
+-- FOV (CAMPO DE VISÃO)
+------------------------------------------------------------
+local function applyFOV()
+	if fovEnabled then
+		camera.FieldOfView = fovValue
+	else
+		camera.FieldOfView = 70
+	end
+end
+
+-- Loop para manter o FOV (impede que o jogo resete)
+RunService.RenderStepped:Connect(function()
+	if fovEnabled and camera.FieldOfView ~= fovValue then
+		camera.FieldOfView = fovValue
+	end
+end)
 
 ------------------------------------------------------------
 -- ANTI-FLING
@@ -429,13 +436,9 @@ RunService.Heartbeat:Connect(function()
 	
 	if hrp and hum then
 		local vel = hrp.AssemblyLinearVelocity
-		if vel.Magnitude > 100 then
-			hrp.AssemblyLinearVelocity = Vector3.zero
-		end
+		if vel.Magnitude > 100 then hrp.AssemblyLinearVelocity = Vector3.zero end
 		local angVel = hrp.AssemblyAngularVelocity
-		if angVel.Magnitude > 50 then
-			hrp.AssemblyAngularVelocity = Vector3.zero
-		end
+		if angVel.Magnitude > 50 then hrp.AssemblyAngularVelocity = Vector3.zero end
 	end
 end)
 
@@ -769,6 +772,30 @@ makeToggle(pageUtils, "Anti-Fling", 20, y, 200, 40, function(on)
 	antiFlingActive = on
 end)
 
+-- NOVO: FOV
+y += 50
+makeToggle(pageUtils, "Ativar FOV", 20, y, 200, 40, function(on)
+	fovEnabled = on
+	applyFOV()
+end)
+local fovBox = Instance.new("TextBox", pageUtils)
+fovBox.Size = UDim2.fromOffset(80, 40)
+fovBox.Position = UDim2.fromOffset(240, y)
+fovBox.BackgroundColor3 = OFF_COLOR
+fovBox.TextColor3 = WHITE
+fovBox.Font = Enum.Font.GothamBold
+fovBox.TextSize = 14
+fovBox.Text = tostring(fovValue)
+corner(fovBox, 6)
+fovBox.FocusLost:Connect(function()
+	local n = tonumber(fovBox.Text)
+	if n then 
+		fovValue = math.clamp(n, 1, 120) 
+		applyFOV()
+	end
+	fovBox.Text = tostring(fovValue)
+end)
+
 local function makeInput(parent, text, x, y)
 	local lbl = Instance.new("TextLabel", parent)
 	lbl.Size = UDim2.fromOffset(70, 40)
@@ -791,13 +818,13 @@ local function makeInput(parent, text, x, y)
 	return box
 end
 
-local boxAlcance = makeInput(pageUtils, "Alcance:", 20, 130)
+local boxAlcance = makeInput(pageUtils, "Alcance:", 20, 190)
 boxAlcance.Text = tostring(teleRange)
 boxAlcance.FocusLost:Connect(function() 
 	local n = tonumber(boxAlcance.Text) if n then teleRange = math.clamp(n, 5, 500) end 
 end)
 
-local boxOrbita = makeInput(pageUtils, "Órbita:", 180, 130)
+local boxOrbita = makeInput(pageUtils, "Órbita:", 180, 190)
 boxOrbita.Text = tostring(teleOrbit)
 boxOrbita.FocusLost:Connect(function() 
 	local n = tonumber(boxOrbita.Text) if n then teleOrbit = math.clamp(n, 3, 100) end 
